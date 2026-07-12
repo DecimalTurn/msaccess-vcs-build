@@ -168,6 +168,57 @@ try {
 $builtFileName = $access.CurrentProject.Name
 $builtFilePath = $access.CurrentProject.FullName
 
+# Diagnostic: capture and dump VCS build logs
+Write-Host "  [DIAG] Searching for VCS build logs..."
+$logDirs = @(
+    (Join-Path $SourceDir "logs"),
+    (Join-Path $curDir "logs"),
+    (Join-Path (Split-Path $curDir -Parent) "logs")
+)
+$foundLogs = $false
+foreach ($logDir in $logDirs) {
+    if (Test-Path $logDir) {
+        $buildLogs = Get-ChildItem $logDir -Filter "Build_*.log" -File | Sort-Object LastWriteTime -Descending
+        foreach ($log in $buildLogs) {
+            Write-Host "  [VCS LOG] $($log.FullName) ($($log.LastWriteTime)):"
+            Write-Host "  ----------"
+            try {
+                Get-Content $log.FullName | ForEach-Object { Write-Host "  $_" }
+            } catch {
+                Write-Host "  (could not read: $_)"
+            }
+            Write-Host "  ----------"
+            $foundLogs = $true
+        }
+    }
+}
+if (-not $foundLogs) {
+    Write-Host "  [DIAG] No VCS build logs found in: $($logDirs -join ', ')"
+}
+
+# Try to read any form status text
+Write-Host "  [DIAG] Inspecting open forms:"
+try {
+    for ($i = 0; $i -lt $access.Forms.Count; $i++) {
+        $form = $access.Forms.Item($i)
+        Write-Host "    Form[$i]: $($form.Name) (Visible=$($form.Visible))"
+        try {
+            $txtLog = $form.Controls | Where-Object { $_.Name -eq "txtLog" }
+            if ($txtLog) {
+                $logText = $txtLog.Value
+                if ($logText) {
+                    Write-Host "      txtLog content:"
+                    $logText -split "`r`n" | ForEach-Object { Write-Host "        $_" }
+                }
+            }
+        } catch { }
+    }
+} catch {
+    Write-Host "    (could not enumerate forms: $_)"
+}
+
+Start-Sleep -Seconds 1
+
 Start-Sleep -Seconds 1
 Write-Host "Close Access " -NoNewline
 $access.Quit(2)
