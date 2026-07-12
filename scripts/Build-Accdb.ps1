@@ -9,6 +9,30 @@ param(
    
 )
 
+# Helper: take a screenshot for diagnostics
+function Take-Screenshot {
+    param([string]$Label)
+    $screenshotDir = Join-Path $curDir "screenshots"
+    if (-not (Test-Path $screenshotDir)) { New-Item -Path $screenshotDir -ItemType Directory -Force | Out-Null }
+    $ts = (Get-Date -Format "HHmmss")
+    $path = Join-Path $screenshotDir "build_${Label}_${ts}.png"
+    try {
+        Add-Type -AssemblyName System.Windows.Forms 2>$null
+        Add-Type -AssemblyName System.Drawing 2>$null
+        $screen = [System.Windows.Forms.Screen]::PrimaryScreen
+        $bounds = $screen.Bounds
+        $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen($bounds.X, $bounds.Y, 0, 0, $bounds.Size)
+        $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        $graphics.Dispose()
+        $bitmap.Dispose()
+        Write-Host "  [SCREENSHOT] $Label -> $path"
+    } catch {
+        Write-Host "  [SCREENSHOT] Failed: $_"
+    }
+}
+
 # Check if the script is running under a Windows service account (SYSTEM, NETWORK SERVICE, LOCAL SERVICE)
 $serviceAccounts = @('SYSTEM', 'NETWORK SERVICE', 'LOCAL SERVICE')
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -107,11 +131,13 @@ try {
 } catch {
     Write-Host "  HandleRibbonCommand: ERROR - $_"
     Write-Host "  [DIAG] Forms.Count after error: $($access.Forms.Count)"
+    Take-Screenshot "after_cmd_error"
 }
 
 Write-Host "  [DIAG] Post-command state:"
 Write-Host "    Forms.Count: $($access.Forms.Count)"
 Write-Host "    CurrentProject.Name: $($access.CurrentProject.Name)"
+Take-Screenshot "after_cmd"
 
 # VCS Build close tempApp and reopen new accdb => check 2x for Forms.Count
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -127,8 +153,10 @@ while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)
 }
 $stopwatch.Stop()
 Write-Host "`n  [DIAG] First poll done: Forms.Count=$($access.Forms.Count), elapsed=${0:f1}s" -f $stopwatch.Elapsed.TotalSeconds
+if ($stopwatch.Elapsed.TotalSeconds -ge 29) { Take-Screenshot "poll1_timeout" }
 
 Start-Sleep -Seconds 3
+Take-Screenshot "before_poll2"
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $lastFormCount = -1
 while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
@@ -142,10 +170,12 @@ while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)
 }
 $stopwatch.Stop()
 Write-Host "`n  [DIAG] Second poll done: Forms.Count=$($access.Forms.Count), elapsed=${0:f1}s" -f $stopwatch.Elapsed.TotalSeconds
+if ($stopwatch.Elapsed.TotalSeconds -ge 29) { Take-Screenshot "poll2_timeout" }
 Write-Host " completed"
 
 # Diagnostic: capture post-build state
 Write-Host "  [DIAG] Post-build state:"
+Take-Screenshot "post_build"
 Write-Host "    CurrentProject.Name: '$($access.CurrentProject.Name)'"
 Write-Host "    CurrentProject.FullName: '$($access.CurrentProject.FullName)'"
 Write-Host "    CurrentProject.Path: '$($access.CurrentProject.Path)'"
