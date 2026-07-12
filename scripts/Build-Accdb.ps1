@@ -228,7 +228,7 @@ foreach ($logDir in $logDirs) {
                 Write-Host "  [DIAG] After form close: CurrentProject.Name='$builtFileName'"
                 # If still empty, try to find the built database file
                 if ([string]::IsNullOrEmpty($builtFileName)) {
-                    $builtDb = Get-ChildItem $curDir -Filter "*.accdb" -File | Where-Object { $_.Name -ne "$tempFileName.accdb" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    $builtDb = Get-ChildItem $curDir -Recurse -Filter "*.accdb" -File | Where-Object { $_.Name -ne "$tempFileName.accdb" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($builtDb) {
                         Write-Host "  [DIAG] Found built database: $($builtDb.FullName)"
                         try {
