@@ -73,25 +73,97 @@ Write-Host "TargetDir: $TargetDir"
 Write-Host ""
 
 Write-Host "Start msaccess-vcs build " -NoNewline
-$access.Run("$addInProcessPath.SetInteractionMode", [ref] 1)
-Write-Host "." -NoNewline
-$null = $access.Run("$addInProcessPath.HandleRibbonCommand", [ref] "btnBuild", [ref] "$SourceDir")
+
+# Diagnostic: capture pre-build state
+Write-Host ""
+Write-Host "  [DIAG] Pre-build state:"
+Write-Host "    CurrentProject.Name: $($access.CurrentProject.Name)"
+Write-Host "    CurrentProject.FullName: $($access.CurrentProject.FullName)"
+Write-Host "    CurrentProject.Path: $($access.CurrentProject.Path)"
+Write-Host "    Forms.Count: $($access.Forms.Count)"
+try {
+    Write-Host "    VBProjects.Count: $(@($access.VBE.VBProjects).Count)"
+    foreach ($proj in $access.VBE.VBProjects) {
+        Write-Host "      VBProject: $($proj.Name) -> $($proj.FileName)"
+    }
+} catch {
+    Write-Host "    VBProjects: (could not access: $_)"
+}
+
+# Step 1: Set interaction mode
+try {
+    $access.Run("$addInProcessPath.SetInteractionMode", [ref] 1)
+    Write-Host "  SetInteractionMode: OK"
+} catch {
+    Write-Host "  SetInteractionMode: ERROR - $_"
+    Write-Host "  [DIAG] Forms.Count after error: $($access.Forms.Count)"
+    throw
+}
+
+# Step 2: Trigger build
+try {
+    $null = $access.Run("$addInProcessPath.HandleRibbonCommand", [ref] "btnBuild", [ref] "$SourceDir")
+    Write-Host "  HandleRibbonCommand: OK"
+} catch {
+    Write-Host "  HandleRibbonCommand: ERROR - $_"
+    Write-Host "  [DIAG] Forms.Count after error: $($access.Forms.Count)"
+}
+
+Write-Host "  [DIAG] Post-command state:"
+Write-Host "    Forms.Count: $($access.Forms.Count)"
+Write-Host "    CurrentProject.Name: $($access.CurrentProject.Name)"
 
 # VCS Build close tempApp and reopen new accdb => check 2x for Forms.Count
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$lastFormCount = -1
 while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
     Start-Sleep -Seconds 2
+    $fc = $access.Forms.Count
+    if ($fc -ne $lastFormCount) {
+        Write-Host "`n  [DIAG] Forms.Count: $fc (${0:f0}s)" -f $stopwatch.Elapsed.TotalSeconds
+        $lastFormCount = $fc
+    }
     Write-Host "." -NoNewline
 }
 $stopwatch.Stop()
+Write-Host "`n  [DIAG] First poll done: Forms.Count=$($access.Forms.Count), elapsed=${0:f1}s" -f $stopwatch.Elapsed.TotalSeconds
+
 Start-Sleep -Seconds 3
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$lastFormCount = -1
 while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
     Start-Sleep -Seconds 2
+    $fc = $access.Forms.Count
+    if ($fc -ne $lastFormCount) {
+        Write-Host "`n  [DIAG] Forms.Count: $fc (${0:f0}s)" -f $stopwatch.Elapsed.TotalSeconds
+        $lastFormCount = $fc
+    }
     Write-Host "." -NoNewline
 }
 $stopwatch.Stop()
+Write-Host "`n  [DIAG] Second poll done: Forms.Count=$($access.Forms.Count), elapsed=${0:f1}s" -f $stopwatch.Elapsed.TotalSeconds
 Write-Host " completed"
+
+# Diagnostic: capture post-build state
+Write-Host "  [DIAG] Post-build state:"
+Write-Host "    CurrentProject.Name: '$($access.CurrentProject.Name)'"
+Write-Host "    CurrentProject.FullName: '$($access.CurrentProject.FullName)'"
+Write-Host "    CurrentProject.Path: '$($access.CurrentProject.Path)'"
+Write-Host "    Forms.Count: $($access.Forms.Count)"
+try {
+    $db = $access.CurrentDb
+    Write-Host "    CurrentDb.Name: '$($db.Name)'"
+    Write-Host "    CurrentDb.TableDefs.Count: $($db.TableDefs.Count)"
+    [void][System.Runtime.Interopservices.Marshal]::ReleaseComObject($db)
+} catch {
+    Write-Host "    CurrentDb: (could not access: $_)"
+}
+try {
+    Write-Host "    IsCurrentDatabase: $($access.Application.IsCurrentDatabase)"
+    Write-Host "    Visible: $($access.Visible)"
+} catch {
+    Write-Host "    App state: (could not access: $_)"
+}
 
 $builtFileName = $access.CurrentProject.Name
 $builtFilePath = $access.CurrentProject.FullName
