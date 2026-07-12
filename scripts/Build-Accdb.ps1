@@ -73,22 +73,34 @@ Write-Host "TargetDir: $TargetDir"
 Write-Host ""
 
 Write-Host "Start msaccess-vcs build " -NoNewline
-$access.Run("$addInProcessPath.SetInteractionMode", [ref] 1)
-Write-Host "." -NoNewline
-$null = $access.Run("$addInProcessPath.HandleRibbonCommand", [ref] "btnBuild", [ref] "$SourceDir")
 
-# VCS Build close tempApp and reopen new accdb => check 2x for Forms.Count
-$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
-    Start-Sleep -Seconds 2
-    Write-Host "." -NoNewline
+# Step 1: Set interaction mode
+try {
+    $access.Run("$addInProcessPath.SetInteractionMode", [ref] 1)
+} catch {
+    Write-Host "  SetInteractionMode: ERROR - $_"
+    throw
 }
-$stopwatch.Stop()
-Start-Sleep -Seconds 3
+
+# Step 2: Trigger build
+try {
+    $null = $access.Run("$addInProcessPath.HandleRibbonCommand", [ref] "btnBuild", [ref] "$SourceDir")
+} catch {
+    Write-Host "  HandleRibbonCommand: ERROR - $_"
+}
+
+# VCS Build closes tempApp and reopens new accdb.
+# Poll until the build completes: CurrentProject changes from temp to the target database.
+Write-Host "." -NoNewline
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
+$buildDone = $false
+while (-not $buildDone -and $stopwatch.Elapsed.TotalSeconds -lt 60) {
     Start-Sleep -Seconds 2
+    $cpn = $access.CurrentProject.Name
     Write-Host "." -NoNewline
+    if ($cpn -and $cpn -ne "$tempFileName.accdb") {
+        $buildDone = $true
+    }
 }
 $stopwatch.Stop()
 Write-Host " completed"
@@ -107,6 +119,17 @@ Remove-Variable access
 [GC]::Collect()
 Write-Host "." -NoNewline
 [GC]::WaitForPendingFinalizers()
+Write-Host "."
+
+# Ensure Access is fully closed and lock file is released
+$lockFile = [System.IO.Path]::ChangeExtension($builtFilePath, "laccdb")
+if (Test-Path $lockFile) {
+    Write-Host "  Removing lock file: $lockFile"
+    Remove-Item -Path $lockFile -Force -ErrorAction SilentlyContinue
+}
+# Kill any lingering Access processes
+Get-Process -Name "MSACCESS" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
 Write-Host " completed"
 Write-Host ""
 
