@@ -230,17 +230,13 @@ foreach ($logDir in $logDirs) {
                 if ([string]::IsNullOrEmpty($builtFileName)) {
                     $builtDb = Get-ChildItem $curDir -Recurse -Filter "*.accdb" -File | Where-Object { $_.Name -ne "$tempFileName.accdb" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($builtDb) {
-                        Write-Host "  [DIAG] Found built database: $($builtDb.FullName)"
-                        try {
-                            $access.OpenCurrentDatabase($builtDb.FullName)
-                            $builtFileName = $access.CurrentProject.Name
-                            $builtFilePath = $access.CurrentProject.FullName
-                            Write-Host "  [DIAG] After OpenCurrentDatabase: '$builtFileName'"
-                        } catch {
-                            Write-Host "  [DIAG] OpenCurrentDatabase failed: $_"
-                        }
+                        Write-Host "  [DIAG] Found built database: $($builtDb.FullName) ($($builtDb.Length) bytes)"
+                        # Use the file directly - CurrentProject may be unreliable in COM automation
+                        $builtFileName = $builtDb.Name
+                        $builtFilePath = $builtDb.FullName
+                        Write-Host "  [DIAG] Using file path: '$builtFileName'"
                     } else {
-                        Write-Host "  [DIAG] No built .accdb found in $curDir"
+                        Write-Host "  [DIAG] No built .accdb found recursively in $curDir"
                     }
                 }
             }
