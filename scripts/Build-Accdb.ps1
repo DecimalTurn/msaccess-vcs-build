@@ -140,10 +140,13 @@ Write-Host "    CurrentProject.Name: $($access.CurrentProject.Name)"
 Take-Screenshot "after_cmd"
 
 # VCS Build close tempApp and reopen new accdb => check 2x for Forms.Count
+# Pump Windows messages explicitly so SetTimer callbacks fire in COM automation
+Add-Type -AssemblyName System.Windows.Forms 2>$null
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $lastFormCount = -1
-while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
-    Start-Sleep -Seconds 2
+while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 60)) {
+    Start-Sleep -Milliseconds 500
+    [System.Windows.Forms.Application]::DoEvents()
     $fc = $access.Forms.Count
     if ($fc -ne $lastFormCount) {
         Write-Host ("`n  [DIAG] Forms.Count: $fc ({0:f0}s)" -f $stopwatch.Elapsed.TotalSeconds)
@@ -153,14 +156,15 @@ while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)
 }
 $stopwatch.Stop()
 Write-Host ("`n  [DIAG] First poll done: Forms.Count=$($access.Forms.Count), elapsed={0:f1}s" -f $stopwatch.Elapsed.TotalSeconds)
-if ($stopwatch.Elapsed.TotalSeconds -ge 29) { Take-Screenshot "poll1_timeout" }
+if ($stopwatch.Elapsed.TotalSeconds -ge 59) { Take-Screenshot "poll1_timeout" }
 
 Start-Sleep -Seconds 3
 Take-Screenshot "before_poll2"
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $lastFormCount = -1
-while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)) {
-    Start-Sleep -Seconds 2
+while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 60)) {
+    Start-Sleep -Milliseconds 500
+    [System.Windows.Forms.Application]::DoEvents()
     $fc = $access.Forms.Count
     if ($fc -ne $lastFormCount) {
         Write-Host ("`n  [DIAG] Forms.Count: $fc ({0:f0}s)" -f $stopwatch.Elapsed.TotalSeconds)
@@ -170,7 +174,7 @@ while (($access.Forms.Count -gt 0) -and ($stopwatch.Elapsed.TotalSeconds -lt 30)
 }
 $stopwatch.Stop()
 Write-Host ("`n  [DIAG] Second poll done: Forms.Count=$($access.Forms.Count), elapsed={0:f1}s" -f $stopwatch.Elapsed.TotalSeconds)
-if ($stopwatch.Elapsed.TotalSeconds -ge 29) { Take-Screenshot "poll2_timeout" }
+if ($stopwatch.Elapsed.TotalSeconds -ge 59) { Take-Screenshot "poll2_timeout" }
 Write-Host " completed"
 
 # Diagnostic: capture post-build state
