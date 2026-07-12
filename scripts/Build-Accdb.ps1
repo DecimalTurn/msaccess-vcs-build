@@ -124,40 +124,13 @@ try {
     throw
 }
 
-# Step 2: Trigger build (may be synchronous with timer bypass)
+# Step 2: Trigger build
 try {
-    # Start a background screenshot timer every 10s during the build
-    $screenshotJob = Start-Job -ScriptBlock {
-        param($dir, $pid)
-        $count = 1
-        while ($true) {
-            Start-Sleep -Seconds 10
-            try {
-                Add-Type -AssemblyName System.Windows.Forms, System.Drawing -ErrorAction Stop
-                $screen = [System.Windows.Forms.Screen]::PrimaryScreen
-                $bitmap = New-Object System.Drawing.Bitmap $screen.Bounds.Width, $screen.Bounds.Height
-                $g = [System.Drawing.Graphics]::FromImage($bitmap)
-                $g.CopyFromScreen($screen.Bounds.X, $screen.Bounds.Y, 0, 0, $screen.Bounds.Size)
-                $path = Join-Path $dir "build_tick_$($count.ToString('D3')).png"
-                $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-                $g.Dispose(); $bitmap.Dispose()
-                $count++
-            } catch { }
-        }
-    } -ArgumentList (Join-Path $curDir "screenshots")
-    Write-Host "  [DIAG] Background screenshot timer started"
-
     $null = $access.Run("$addInProcessPath.HandleRibbonCommand", [ref] "btnBuild", [ref] "$SourceDir")
-    Write-Host "  HandleRibbonCommand: OK (returned)"
-    
-    Stop-Job $screenshotJob -ErrorAction SilentlyContinue
-    Remove-Job $screenshotJob -Force -ErrorAction SilentlyContinue
-    Write-Host "  [DIAG] Background screenshot timer stopped"
+    Write-Host "  HandleRibbonCommand: OK"
 } catch {
     Write-Host "  HandleRibbonCommand: ERROR - $_"
     Write-Host "  [DIAG] Forms.Count after error: $($access.Forms.Count)"
-    Stop-Job $screenshotJob -ErrorAction SilentlyContinue
-    Remove-Job $screenshotJob -Force -ErrorAction SilentlyContinue
     Take-Screenshot "after_cmd_error"
 }
 
