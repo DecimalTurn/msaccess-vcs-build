@@ -226,6 +226,23 @@ foreach ($logDir in $logDirs) {
                 $builtFileName = $access.CurrentProject.Name
                 $builtFilePath = $access.CurrentProject.FullName
                 Write-Host "  [DIAG] After form close: CurrentProject.Name='$builtFileName'"
+                # If still empty, try to find the built database file
+                if ([string]::IsNullOrEmpty($builtFileName)) {
+                    $builtDb = Get-ChildItem $curDir -Filter "*.accdb" -File | Where-Object { $_.Name -ne "$tempFileName.accdb" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($builtDb) {
+                        Write-Host "  [DIAG] Found built database: $($builtDb.FullName)"
+                        try {
+                            $access.OpenCurrentDatabase($builtDb.FullName)
+                            $builtFileName = $access.CurrentProject.Name
+                            $builtFilePath = $access.CurrentProject.FullName
+                            Write-Host "  [DIAG] After OpenCurrentDatabase: '$builtFileName'"
+                        } catch {
+                            Write-Host "  [DIAG] OpenCurrentDatabase failed: $_"
+                        }
+                    } else {
+                        Write-Host "  [DIAG] No built .accdb found in $curDir"
+                    }
+                }
             }
             break
         }
